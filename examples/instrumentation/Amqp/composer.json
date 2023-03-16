@@ -1,0 +1,43 @@
+{
+    "name": "open-telemetry/amqp-demo",
+    "description": "AMQP OpenTelemetry demo",
+    "type": "project",
+    "require": {
+        "open-telemetry/opentelemetry": "dev-main",
+        "open-telemetry/opentelemetry-auto-amqp": "dev-main",
+        "symfony/http-client": "6.3.x-dev",
+        "guzzlehttp/promises": "^1.5@dev",
+        "php-http/message-factory": "^1.0@dev",
+        "nyholm/psr7": "^1.5"
+    },
+    "license": "AGPL",
+    "autoload": {
+        "psr-4": {
+            "OpenTelemetry\\AmqpDemo\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Guillermo Lengemann Garcés",
+            "email": "guillermo.lengemann@gmail.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../../../src/Instrumentation/Amqp/",
+            "options": {
+                "symlink": true
+            }
+        }
+    ],
+    "config": {
+        "allow-plugins": {
+            "php-http/discovery": true
+        }
+    },
+    "require-dev": {
+        "symfony/var-dumper": "6.3.x-dev"
+    }
+}

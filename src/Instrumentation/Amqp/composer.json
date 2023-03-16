@@ -1,0 +1,61 @@
+{
+  "name": "open-telemetry/opentelemetry-auto-amqp",
+  "description": "OpenTelemetry auto-instrumentation for AMQP",
+  "keywords": [
+    "opentelemetry",
+    "otel",
+    "open-telemetry",
+    "tracing",
+    "amqp",
+    "instrumentation"
+  ],
+  "type": "library",
+  "homepage": "https://opentelemetry.io/docs/php",
+  "readme": "./README.md",
+  "license": "AGPL",
+  "autoload": {
+    "psr-4": {
+      "OpenTelemetry\\Contrib\\Instrumentation\\Amqp\\": "src/"
+    },
+    "files": [
+      "_register.php"
+    ]
+  },
+  "authors": [
+    {
+      "name": "Guillermo Lengemann Garcés",
+      "email": "guillermo.lengemann@gmail.com"
+    }
+  ],
+  "minimum-stability": "dev",
+  "require": {
+    "php": "^8.2",
+    "ext-otel_instrumentation": "*",
+    "ext-amqp": "*",
+    "open-telemetry/api": "dev-main"
+  },
+  "require-dev": {
+    "friendsofphp/php-cs-fixer": "^3",
+    "monolog/monolog": "*",
+    "php-http/guzzle7-adapter": "*",
+    "nyholm/psr7": "*",
+    "phan/phan": "^5.0",
+    "php-http/mock-client": "*",
+    "phpstan/phpstan": "^1.1",
+    "phpstan/phpstan-phpunit": "^1.0",
+    "psalm/plugin-phpunit": "^0.16",
+    "open-telemetry/sdk": "dev-main",
+    "phpunit/phpunit": "^9.5",
+    "vimeo/psalm": "^4.0"
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "OpenTelemetry\\Tests\\Instrumentation\\Amqp\\": "tests/"
+    }
+  },
+  "config": {
+    "allow-plugins": {
+      "php-http/discovery": true
+    }
+  }
+}
