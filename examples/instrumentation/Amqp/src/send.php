@@ -5,7 +5,7 @@ use OpenTelemetry\SDK\Trace\Sampler\AlwaysOnSampler;
 use OpenTelemetry\SDK\Trace\Sampler\ParentBased;
 use OpenTelemetry\SDK\Trace\TracerProviderBuilder;
 
-include __DIR__.'/../vendor/autoload.php';
+include __DIR__ . '/../vendor/autoload.php';
 
 /** Manual setup for automatic instrumentation */
 OpenTelemetry\API\Common\Instrumentation\Globals::registerInitializer(function (Configurator $configurator) {
@@ -33,14 +33,12 @@ OpenTelemetry\API\Common\Instrumentation\Globals::registerInitializer(function (
         ->addSpanProcessor($jaegerExporter)
         ->setSampler(new ParentBased(new AlwaysOnSampler()))
         ->setResource($resource)
-        ->build()
-    ;
+        ->build();
 
     OpenTelemetry\SDK\Common\Util\ShutdownHandler::register([$tracerProvider, 'shutdown']);
 
     return $configurator
-        ->withTracerProvider($tracerProvider)
-    ;
+        ->withTracerProvider($tracerProvider);
 });
 /** Manual setup for automatic instrumentation */
 
@@ -54,24 +52,22 @@ $connection->connect();
 //Create and declare channel
 $channel = new AMQPChannel($connection);
 
-
 //AMQP Exchange is the publishing mechanism
 $exchange = new AMQPExchange($channel);
 
+try {
+    $routing_key = 'hello';
 
-try{
-	$routing_key = 'hello';
+    $queue = new AMQPQueue($channel);
+    $queue->setName($routing_key);
+    $queue->setFlags(AMQP_NOPARAM);
+    $queue->declareQueue();
 
-	$queue = new AMQPQueue($channel);
-	$queue->setName($routing_key);
-	$queue->setFlags(AMQP_NOPARAM);
-	$queue->declareQueue();
+    $message = 'howdy-do';
+    $attributes = ['message_id' => uniqid()];
+    $exchange->publish($message, $routing_key, null, $attributes);
 
-
-	$message = 'howdy-do';
-	$exchange->publish($message, $routing_key);
-
-	$connection->disconnect();
-}catch(Exception $ex){
-	print_r($ex);
+    $connection->disconnect();
+} catch (Exception $ex) {
+    print_r($ex);
 }
