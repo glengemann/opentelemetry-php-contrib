@@ -1,9 +1,6 @@
 <?php
 
 use OpenTelemetry\API\Common\Instrumentation\Configurator;
-use OpenTelemetry\API\Common\Instrumentation\Globals;
-use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
-use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\SDK\Trace\Sampler\AlwaysOnSampler;
 use OpenTelemetry\SDK\Trace\Sampler\ParentBased;
 use OpenTelemetry\SDK\Trace\TracerProviderBuilder;
@@ -17,6 +14,7 @@ OpenTelemetry\API\Common\Instrumentation\Globals::registerInitializer(function (
         'http://localhost:4317%s',
         OpenTelemetry\Contrib\Otlp\OtlpUtil::method(OpenTelemetry\API\Common\Signal\Signals::TRACE)
     );
+
     $transport = $grpcTransport->create($endpoint);
     $jaegerExporter = new \OpenTelemetry\Contrib\Otlp\SpanExporter($transport);
     $jaegerExporter = new \OpenTelemetry\SDK\Trace\SpanProcessor\SimpleSpanProcessor($jaegerExporter);
@@ -25,8 +23,8 @@ OpenTelemetry\API\Common\Instrumentation\Globals::registerInitializer(function (
     $spanProcessor = new \OpenTelemetry\SDK\Trace\SpanProcessor\SimpleSpanProcessor($exporter->create());
 
     $attributes = OpenTelemetry\SDK\Common\Attribute\Attributes::create([
-        OpenTelemetry\SemConv\ResourceAttributes::SERVICE_NAME => 'message-consumer-php',
-        OpenTelemetry\SemConv\ResourceAttributes::PROCESS_RUNTIME_DESCRIPTION => 'RabbitMQ message consumer with manual setup for automatic and manual instrumentation.'
+        OpenTelemetry\SemConv\ResourceAttributes::SERVICE_NAME => 'message-consumer-class-php',
+        OpenTelemetry\SemConv\ResourceAttributes::PROCESS_RUNTIME_DESCRIPTION => 'RabbitMQ message consumer with manual setup for automatic instrumentation using a callable class method.'
     ]);
     $resource = OpenTelemetry\SDK\Resource\ResourceInfo::create($attributes);
 
@@ -60,30 +58,6 @@ $channel = new AMQPChannel($connection);
 //AMQP Exchange is the publishing mechanism
 $exchange = new AMQPExchange($channel);
 
-
-$callback_func = function(AMQPEnvelope $message, AMQPQueue $q) use (&$max_consume) {
-    $context = TraceContextPropagator::getInstance()->extract($message->getHeaders());
-    $tracer = Globals::tracerProvider()->getTracer('io.opentelemetry.contrib.php.amqp');
-    $rootSpan = $tracer->spanBuilder('AMQPQueue::consume (manual)')
-        ->setParent($context)
-        ->setSpanKind(SpanKind::KIND_CONSUMER)
-        ->startSpan()
-        ->setAttribute('messaging.consumer.id', $message->getConsumerTag())
-        ->setAttribute('messaging.source.kind', 'queue')
-        ->setAttribute('messaging.source.name', $message->getExchangeName())
-        ->setAttribute('messaging.operation', 'process')
-        ->setAttribute('messaging.message.id', $message->getMessageId())
-    ;
-    $rootScope = $rootSpan->activate();
-
-    echo " [x] Received ", $message->getBody(), PHP_EOL;
-    $q->nack($message->getDeliveryTag());
-    sleep(1);
-
-    $rootSpan->end();
-    $rootScope->detach();
-};
-
 try{
 	$routing_key = 'hello';
 
@@ -93,7 +67,7 @@ try{
 	$queue->declareQueue();
 
 	echo ' [*] Waiting for messages. To exit press CTRL+C ', PHP_EOL;
-	$queue->consume($callback_func);
+	$queue->consume([new AmqpReceiver, 'consume']);
 }catch(AMQPQueueException $ex){
 	print_r($ex);
 }catch(Exception $ex){
@@ -104,3 +78,12 @@ echo 'Close connection...', PHP_EOL;
 $queue->cancel();
 $connection->disconnect();
 
+class AmqpReceiver
+{
+    public function consume(AMQPEnvelope $message, AMQPQueue $q): void
+    {
+        echo " [x] Received ", $message->getBody(), PHP_EOL;
+        $q->nack($message->getDeliveryTag());
+        sleep(1);
+    }
+}

@@ -26,9 +26,13 @@ class AmqpInstrumentation
                 $builder = self::makeBuilder($instrumentation, 'AMQPExchange::publish', $function, $class, $filename, $lineno)
                     ->setSpanKind(SpanKind::KIND_PRODUCER);
 
-                $builder->setAttribute('messaging.operation', 'publish');
-                // Only for spans that represent an operation on a single message.
-                //$builder->setAttribute('messaging.message.id', );
+                $builder
+                    ->setAttribute('messaging.operation', 'publish')
+                    ->setAttribute('messaging.destination.kind', 'queue')
+                    ->setAttribute('messaging.destination.name', !empty($exchange->getName()) ? $exchange->getName() : '')
+                    ->setAttribute('messaging.rabbitmq.destination.routing_key', $params[1] ?? '')
+                    ->setAttribute('messaging.message.id', $params[3]['message_id'] ?? '')
+                ;
 
                 $parent = Context::getCurrent();
                 $span = $builder->startSpan();
@@ -52,9 +56,6 @@ class AmqpInstrumentation
             pre: static function (\AMQPQueue $queue, array $params, string $class, string $function, ?string $filename, ?string $lineno) use ($instrumentation) {
                 $builder = self::makeBuilder($instrumentation, 'AMQPQueue::consume', $function, $class, $filename, $lineno)
                     ->setSpanKind(SpanKind::KIND_CONSUMER);
-                $builder->setAttribute('consumer.tag', $params[2] ?? 'unknown');
-                $builder->setAttribute(TraceAttributes::MESSAGING_CONSUMER_ID, $params[2] ?? 'unknown');
-                $builder->setAttribute('messaging.consume.flags', $params[1] ?? 'unknown');
 
                 $parent = Context::getCurrent();
                 $span = $builder->startSpan();
@@ -67,6 +68,31 @@ class AmqpInstrumentation
                 } else {
                     self::end(null);
                 }
+            }
+        );
+
+        hook(
+            class: \AmqpReceiver::class,
+            function: 'consume',
+            pre: static function (\AmqpReceiver $queue, array $params, string $class, string $function, ?string $filename, ?string $lineno) use ($instrumentation) {
+                $context = TraceContextPropagator::getInstance()->extract($params[0]->getHeaders());
+
+                $builder = self::makeBuilder($instrumentation, 'AmqpReceiver::consume (callable class method)', $function, $class, $filename, $lineno)
+                    ->setParent($context)
+                    ->setSpanKind(SpanKind::KIND_CONSUMER)
+                    ->setAttribute('messaging.consumer.id', $params[0]->getConsumerTag())
+                    ->setAttribute('messaging.source.kind', 'queue')
+                    ->setAttribute('messaging.source.name', $params[0]->getExchangeName())
+                    ->setAttribute('messaging.operation', 'process')
+                    ->setAttribute('messaging.message.id', $params[0]->getMessageId())
+                ;
+
+                $parent = Context::getCurrent();
+                $span = $builder->startSpan();
+                Context::storage()->attach($span->storeInContext($parent));
+            },
+            post: static function ($object, ?array $params, mixed $return, ?\Throwable $exception) {
+                self::end($exception);
             }
         );
 
