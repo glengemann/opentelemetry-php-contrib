@@ -4,6 +4,9 @@ use OpenTelemetry\API\Common\Instrumentation\Configurator;
 use OpenTelemetry\SDK\Trace\Sampler\AlwaysOnSampler;
 use OpenTelemetry\SDK\Trace\Sampler\ParentBased;
 use OpenTelemetry\SDK\Trace\TracerProviderBuilder;
+use Symfony\Component\Messenger\Bridge\Amqp\Transport\AmqpSender;
+use Symfony\Component\Messenger\Bridge\Amqp\Transport\Connection;
+use Symfony\Component\Messenger\Envelope;
 
 include __DIR__ . '/../vendor/autoload.php';
 
@@ -22,8 +25,8 @@ OpenTelemetry\API\Common\Instrumentation\Globals::registerInitializer(function (
     $spanProcessor = new \OpenTelemetry\SDK\Trace\SpanProcessor\SimpleSpanProcessor($exporter->create());
 
     $attributes = OpenTelemetry\SDK\Common\Attribute\Attributes::create([
-        OpenTelemetry\SemConv\ResourceAttributes::SERVICE_NAME => 'message-producer-php',
-        OpenTelemetry\SemConv\ResourceAttributes::PROCESS_RUNTIME_DESCRIPTION => 'RabbitMQ message producer with manual setup for automatic instrumentation.'
+        OpenTelemetry\SemConv\ResourceAttributes::SERVICE_NAME => 'message-producer-symfony-messenger',
+        OpenTelemetry\SemConv\ResourceAttributes::PROCESS_RUNTIME_DESCRIPTION => 'RabbitMQ message producer using symfony/amqp-messenger with manual setup for automatic instrumentation.'
     ]);
     $resource = OpenTelemetry\SDK\Resource\ResourceInfo::create($attributes);
 
@@ -42,32 +45,27 @@ OpenTelemetry\API\Common\Instrumentation\Globals::registerInitializer(function (
 });
 /** Manual setup for automatic instrumentation */
 
-//Establish connection to AMQP
-$connection = new AMQPConnection();
-$connection->setHost('127.0.0.1');
-$connection->setLogin('guest');
-$connection->setPassword('guest');
-$connection->connect();
+class SmsNotification
+{
+    public function __construct(private string $content)
+    {
+    }
 
-//Create and declare channel
-$channel = new AMQPChannel($connection);
-
-//AMQP Exchange is the publishing mechanism
-$exchange = new AMQPExchange($channel);
-
-try {
-    $routing_key = 'hello';
-
-    $queue = new AMQPQueue($channel);
-    $queue->setName($routing_key);
-    $queue->setFlags(AMQP_NOPARAM);
-    $queue->declareQueue();
-
-    $message = 'howdy-do';
-    $attributes = ['message_id' => uniqid()];
-    $exchange->publish($message, $routing_key, null, $attributes);
-
-    $connection->disconnect();
-} catch (Exception $ex) {
-    print_r($ex);
+    public function getContent(): string
+    {
+        return $this->content;
+    }
 }
+
+$connectionOptions = [];
+$exchangeOptions = ['name' => 'otl-ex'];
+$queuesOptions = [];
+$connection = new Connection($connectionOptions, $exchangeOptions, $queuesOptions);
+$sender = new AmqpSender($connection);
+
+$message = new SmsNotification('Order ready!');
+$envelope = new Envelope($message);
+
+$sender->send($envelope);
+
+

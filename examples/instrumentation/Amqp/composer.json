@@ -3,12 +3,15 @@
     "description": "AMQP OpenTelemetry demo",
     "type": "project",
     "require": {
+        "ext-amqp": "*",
         "open-telemetry/opentelemetry": "dev-main",
         "open-telemetry/opentelemetry-auto-amqp": "dev-main",
         "symfony/http-client": "6.3.x-dev",
         "guzzlehttp/promises": "^1.5@dev",
         "php-http/message-factory": "^1.0@dev",
-        "nyholm/psr7": "^1.5"
+        "nyholm/psr7": "^1.5",
+        "open-telemetry/sdk": "*",
+        "symfony/amqp-messenger": "6.3.x-dev"
     },
     "license": "AGPL",
     "autoload": {

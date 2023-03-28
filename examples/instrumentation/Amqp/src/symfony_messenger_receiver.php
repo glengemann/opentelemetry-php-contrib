@@ -4,19 +4,11 @@ use OpenTelemetry\API\Common\Instrumentation\Configurator;
 use OpenTelemetry\SDK\Trace\Sampler\AlwaysOnSampler;
 use OpenTelemetry\SDK\Trace\Sampler\ParentBased;
 use OpenTelemetry\SDK\Trace\TracerProviderBuilder;
+use Symfony\Component\Messenger\Bridge\Amqp\Transport\AmqpReceiver;
+use Symfony\Component\Messenger\Bridge\Amqp\Transport\Connection;
+use Symfony\Component\Messenger\Envelope;
 
-include __DIR__.'/../vendor/autoload.php';
-
-//class OtlAmqpReceiver implements OpenTelemetry\Contrib\Instrumentation\Amqp\OtlAmqpConsumer
-class OtlAmqpReceiver
-{
-    public function consume(AMQPEnvelope $message, AMQPQueue $q): void
-    {
-        echo " [x] Received ", $message->getBody(), PHP_EOL;
-        $q->nack($message->getDeliveryTag());
-        sleep(1);
-    }
-}
+include __DIR__ . '/../vendor/autoload.php';
 
 /** Manual setup for automatic instrumentation */
 OpenTelemetry\API\Common\Instrumentation\Globals::registerInitializer(function (Configurator $configurator) {
@@ -25,7 +17,6 @@ OpenTelemetry\API\Common\Instrumentation\Globals::registerInitializer(function (
         'http://localhost:4317%s',
         OpenTelemetry\Contrib\Otlp\OtlpUtil::method(OpenTelemetry\API\Common\Signal\Signals::TRACE)
     );
-
     $transport = $grpcTransport->create($endpoint);
     $jaegerExporter = new \OpenTelemetry\Contrib\Otlp\SpanExporter($transport);
     $jaegerExporter = new \OpenTelemetry\SDK\Trace\SpanProcessor\SimpleSpanProcessor($jaegerExporter);
@@ -34,8 +25,8 @@ OpenTelemetry\API\Common\Instrumentation\Globals::registerInitializer(function (
     $spanProcessor = new \OpenTelemetry\SDK\Trace\SpanProcessor\SimpleSpanProcessor($exporter->create());
 
     $attributes = OpenTelemetry\SDK\Common\Attribute\Attributes::create([
-        OpenTelemetry\SemConv\ResourceAttributes::SERVICE_NAME => 'message-consumer-class-php',
-        OpenTelemetry\SemConv\ResourceAttributes::PROCESS_RUNTIME_DESCRIPTION => 'RabbitMQ message consumer with manual setup for automatic instrumentation using a callable class method.'
+        OpenTelemetry\SemConv\ResourceAttributes::SERVICE_NAME => 'message-consumer-symfony-messenger',
+        OpenTelemetry\SemConv\ResourceAttributes::PROCESS_RUNTIME_DESCRIPTION => 'RabbitMQ message consumer using symfony/amqp-messenger with manual setup for automatic instrumentation.'
     ]);
     $resource = OpenTelemetry\SDK\Resource\ResourceInfo::create($attributes);
 
@@ -45,46 +36,35 @@ OpenTelemetry\API\Common\Instrumentation\Globals::registerInitializer(function (
         ->addSpanProcessor($jaegerExporter)
         ->setSampler(new ParentBased(new AlwaysOnSampler()))
         ->setResource($resource)
-        ->build()
-    ;
+        ->build();
 
     OpenTelemetry\SDK\Common\Util\ShutdownHandler::register([$tracerProvider, 'shutdown']);
 
     return $configurator
-        ->withTracerProvider($tracerProvider)
-    ;
+        ->withTracerProvider($tracerProvider);
 });
 /** Manual setup for automatic instrumentation */
 
-//Establish connection AMQP
-$connection = new AMQPConnection();
-$connection->setHost('127.0.0.1');
-$connection->setLogin('guest');
-$connection->setPassword('guest');
-$connection->connect();
+class SmsNotification
+{
+    public function __construct(private string $content)
+    {
+    }
 
-//Create and declare channel
-$channel = new AMQPChannel($connection);
-
-//AMQP Exchange is the publishing mechanism
-$exchange = new AMQPExchange($channel);
-
-try{
-	$routing_key = 'hello';
-
-	$queue = new AMQPQueue($channel);
-	$queue->setName($routing_key);
-	$queue->setFlags(AMQP_NOPARAM);
-	$queue->declareQueue();
-
-	echo ' [*] Waiting for messages. To exit press CTRL+C ', PHP_EOL;
-	$queue->consume([new OtlAmqpReceiver, 'consume']);
-}catch(AMQPQueueException $ex){
-	print_r($ex);
-}catch(Exception $ex){
-	print_r($ex);
+    public function getContent(): string
+    {
+        return $this->content;
+    }
 }
 
-echo 'Close connection...', PHP_EOL;
-$queue->cancel();
-$connection->disconnect();
+$connectionOptions = [];
+$exchangeOptions = ['name' => 'otl-ex'];
+$queuesOptions = ['otl-q' => ['']];
+$connection = new Connection($connectionOptions, $exchangeOptions, $queuesOptions);
+
+$receiver = new AmqpReceiver($connection);
+$messages = iterator_to_array($receiver->get());
+
+$receiver->reject($messages[0]);
+
+
