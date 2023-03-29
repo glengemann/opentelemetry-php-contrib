@@ -3,14 +3,12 @@
 namespace OpenTelemetry\Contrib\Instrumentation\Amqp;
 
 use OpenTelemetry\API\Common\Instrumentation\CachedInstrumentation;
-use OpenTelemetry\API\Common\Instrumentation\Globals;
 use OpenTelemetry\API\Trace\Span;
 use OpenTelemetry\API\Trace\SpanBuilderInterface;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\Context\Context;
-use OpenTelemetry\SDK\Trace\SpanBuilder;
-use OpenTelemetry\SDK\Trace\Tracer;
+use OpenTelemetry\SDK\Common\Time\ClockFactory;
 use OpenTelemetry\SemConv\TraceAttributes;
 use Throwable;
 use function OpenTelemetry\Instrumentation\hook;
@@ -102,32 +100,30 @@ class AmqpInstrumentation
             class: \AMQPQueue::class,
             function: 'get',
             pre: static function (\AMQPQueue $queue, array $params, string $class, string $function, ?string $filename, ?string $lineno) use ($instrumentation) {
-                $builder = self::makeBuilder($instrumentation, 'AmqpConsumer::get', $function, $class, $filename, $lineno)
+                $queue->setArgument('x-otl-start-times-stamp', ClockFactory::getDefault()->now());
+            },
+            post: static function (\AMQPQueue $queue, ?array $params, \AMQPEnvelope|bool $return, ?\Throwable $exception) use ($instrumentation) {
+                $builder = self::makeBuilder($instrumentation, 'AMQPQueue::get', 'get', 'AMQPQueue', null, null)
                     ->setSpanKind(SpanKind::KIND_CONSUMER)
                     ->setAttribute(TraceAttributes::MESSAGING_OPERATION, 'receive')
+                    ->setStartTimestamp($queue->getArgument('x-otl-start-times-stamp'))
                 ;
 
-                $parent = Context::getCurrent();
-                $span = $builder->startSpan();
-                Context::storage()->attach($span->storeInContext($parent));
-            },
-            post: static function ($object, ?array $params, ?\AMQPEnvelope $return, ?\Throwable $exception) use ($instrumentation) {
+                $parentContext = null;
                 if ($return instanceof \AMQPEnvelope) {
-                    $scope = Context::storage()->scope();
-                    if (!$scope) {
-                        return;
-                    }
-                    $span = Span::fromContext($scope->context());
-                    $span
+                    $parentContext = TraceContextPropagator::getInstance()->extract($return->getHeaders());
+                    $builder
+                        ->setParent($parentContext)
                         ->setAttribute(TraceAttributes::MESSAGING_CONSUMER_ID, $return->getConsumerTag())
                         ->setAttribute('messaging.source.name', $return->getExchangeName())
                         ->setAttribute(TraceAttributes::MESSAGING_MESSAGE_ID, $return->getMessageId())
                         ->setAttribute('messaging.rabbitmq.source.routing_key', $return->getRoutingKey())
                     ;
-
-                    // TODO
-                    $parentContext = TraceContextPropagator::getInstance()->extract($return->getHeaders());
                 }
+
+                $parent = $parentContext ?? Context::getCurrent();
+                $span = $builder->startSpan();
+                Context::storage()->attach($span->storeInContext($parent));
 
                 self::end($exception);
             }
